@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -27,9 +28,9 @@ import (
 // When a file is removed a Remove event won't be emitted until all file
 // descriptors are closed, and deletes will always emit a Chmod. For example:
 //
-//     fp := os.Open("file")
-//     os.Remove("file")        // Triggers Chmod
-//     fp.Close()               // Triggers Remove
+//	fp := os.Open("file")
+//	os.Remove("file")        // Triggers Chmod
+//	fp.Close()               // Triggers Remove
 //
 // This is the event that inotify sends, so not much can be changed about this.
 //
@@ -43,16 +44,16 @@ import (
 //
 // To increase them you can use sysctl or write the value to the /proc file:
 //
-//     # Default values on Linux 5.18
-//     sysctl fs.inotify.max_user_watches=124983
-//     sysctl fs.inotify.max_user_instances=128
+//	# Default values on Linux 5.18
+//	sysctl fs.inotify.max_user_watches=124983
+//	sysctl fs.inotify.max_user_instances=128
 //
 // To make the changes persist on reboot edit /etc/sysctl.conf or
 // /usr/lib/sysctl.d/50-default.conf (details differ per Linux distro; check
 // your distro's documentation):
 //
-//     fs.inotify.max_user_watches=124983
-//     fs.inotify.max_user_instances=128
+//	fs.inotify.max_user_watches=124983
+//	fs.inotify.max_user_instances=128
 //
 // Reaching the limit will result in a "no space left on device" or "too many open
 // files" error.
@@ -120,9 +121,10 @@ type Watcher struct {
 	input chan *input    // Inputs to the reader are sent on this channel
 	quit  chan chan<- error
 
-	mu       sync.Mutex // Protects access to watches, isClosed
-	watches  watchMap   // Map of watches (key: i-number)
-	isClosed bool       // Set to true when Close() is first called
+	mu           sync.Mutex // Protects access to watches, isClosed
+	watches      watchMap   // Map of watches (key: i-number)
+	isClosed     bool       // Set to true when Close() is first called
+	watchSubTree uint32
 }
 
 // NewWatcher creates a new Watcher.
@@ -269,6 +271,13 @@ func (w *Watcher) WatchList() []string {
 	}
 
 	return entries
+}
+
+// SetRecursive enables watches to also monitor subdirectories. Currently
+// only supported under Windows.
+func (w *Watcher) SetRecursive() error {
+	atomic.StoreUint32(&w.watchSubTree, 1)
+	return nil
 }
 
 // These options are from the old golang.org/x/exp/winfsnotify, where you could
@@ -536,7 +545,8 @@ func (w *Watcher) startRead(watch *watch) error {
 	}
 
 	rdErr := windows.ReadDirectoryChanges(watch.ino.handle, &watch.buf[0],
-		uint32(unsafe.Sizeof(watch.buf)), false, mask, nil, &watch.ov, 0)
+		uint32(unsafe.Sizeof(watch.buf)), atomic.LoadUint32(&w.watchSubTree) != 0,
+		mask, nil, &watch.ov, 0)
 	if rdErr != nil {
 		err := os.NewSyscallError("ReadDirectoryChanges", rdErr)
 		if rdErr == windows.ERROR_ACCESS_DENIED && watch.mask&provisional == 0 {

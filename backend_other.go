@@ -4,6 +4,7 @@
 package fsnotify
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 )
@@ -19,6 +20,12 @@ func NewWatcher() (*Watcher, error) {
 // Close removes all watches and closes the events channel.
 func (w *Watcher) Close() error {
 	return nil
+}
+
+// SetRecursive enables watches to also monitor subdirectories. Currently
+// only supported under Windows.
+func (w *Watcher) SetRecursive() error {
+	return errors.New("recursion not supported")
 }
 
 // Add starts monitoring the path for changes.
