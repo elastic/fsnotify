@@ -8,11 +8,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -648,16 +648,8 @@ func (w *Watcher) readEvents() {
 
 			// Point "raw" to the event in the buffer
 			raw := (*windows.FileNotifyInformation)(unsafe.Pointer(&watch.buf[offset]))
-
-			// Create a buf that is the size of the path name
-			size := int(raw.FileNameLength / 2)
-			var buf []uint16
-			// TODO: Use unsafe.Slice in Go 1.17; https://stackoverflow.com/questions/51187973
-			sh := (*reflect.SliceHeader)(unsafe.Pointer(&buf))
-			sh.Data = uintptr(unsafe.Pointer(&raw.FileName))
-			sh.Len = size
-			sh.Cap = size
-			name := windows.UTF16ToString(buf)
+			buf := unsafe.Slice(&raw.FileName, raw.FileNameLength/2)
+			name := syscall.UTF16ToString(buf)
 			fullname := filepath.Join(watch.path, name)
 
 			var mask uint64
