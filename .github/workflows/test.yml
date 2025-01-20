@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['ubuntu-20.04', 'ubuntu-latest']
+        os: ['ubuntu-22.04', 'ubuntu-latest']
         go: ['1.17', '1.22']
     runs-on: '${{ matrix.os }}'
     steps:
@@ -69,7 +69,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['macos-11', 'macos-latest']
+        os: ['macos-13', 'macos-latest']
     runs-on: '${{ matrix.os }}'
     steps:
       - uses: 'actions/checkout@v4'
